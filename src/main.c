@@ -21,41 +21,68 @@ void* worker_signal_gen(void* args) {
     int current_state = 0;
     struct timespec start, now;
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    uint64_t expire;
     uint64_t sampleCount = 0;
 
     /* Until user stops main program */
     while (!param->killswitch) {
 
-        /* get current timestamp */
-        clock_gettime(CLOCK_MONOTONIC_RAW, &now);
-        uint64_t diff = timespec_delta_nanoseconds(&now, &start);
-
-        /* Check if a period has passed */
-        if (diff >= PERIOD_NS) {
-            current_state = !current_state;
-            /* toogle GPIO pin */
-            gpiod_line_set_value(param->gpio->line, current_state);
-
-            /* set start timestamp to current timestamp */
-            start = now;
-
-            /* Write time difference to ring buffer */
-            measurement_t m;
-            m.sampleCount = sampleCount++;
-            m.diff = diff;
-            ring_buffer_queue_arr(param->rbuffer, (char*)&m, sizeof(measurement_t));
+        ssize_t s = read(param->timer_fd, &expire, sizeof(expire));
+        if (s != sizeof(expire)) {
+            perror("Error reading from timerfd");
+            break;
         }
+        current_state = !current_state;
+        /* toogle GPIO pin */
+        gpiod_line_set_value(param->gpio->line, current_state);
+
+        uint64_t add_ns = expire * PERIOD_NS;
+        start.tv_nsec += add_ns;
+
+        clock_gettime(CLOCK_MONOTONIC_RAW, &now);
+
+        uint64_t diff = timespec_delta_nanoseconds(&now, &start);
+        if (diff < 0)
+        diff = - (int64_t)diff;
+
+        /* set start timestamp to current timestamp */
+        start = now;
+
+        /* Write time difference to ring buffer */
+        measurement_t m;
+        m.sampleCount = sampleCount++;
+        m.diff = diff;
+        ring_buffer_queue_arr(param->rbuffer, (char*)&m, sizeof(measurement_t));
     }
     pthread_exit(NULL);
 }
 
-
-
-
 int main() {
     gpio_handle_t *gpio = init_gpio(GPIO_PIN, GPIO_CHIP);
     if (!gpio) {
-        fprintf(stderr, "GPIO-Initialisierung fehlgeschlagen\n");
+        fprintf(stderr, "Error GPIO init failed\n");
+        return EXIT_FAILURE;
+    }
+
+    int tfd = timerfd_create(CLOCK_MONOTONIC, 0);
+    if (tfd == -1) {
+        fprintf(stderr, "Error creating timer\n");
+        gpiod_chip_close(gpio->chip);
+        free(gpio);
+        return EXIT_FAILURE;
+    }
+
+    struct itimerspec timerSpec;
+    timerSpec.it_interval.tv_sec = 0;
+    timerSpec.it_interval.tv_nsec = PERIOD_NS;
+    timerSpec.it_value.tv_sec = 0;
+    timerSpec.it_value.tv_nsec = PERIOD_NS;
+
+    if (timerfd_settime(tfd, 0, &timerSpec, NULL) == -1) {
+        fprintf(stderr, "Error creating timer\n");
+        close(tfd);
+        gpiod_chip_close(gpio->chip);
+        free(gpio);
         return EXIT_FAILURE;
     }
 
@@ -70,6 +97,7 @@ int main() {
     targs.rbuffer = &ring_buffer;
     targs.killswitch = 0;
     targs.doPlot = 1;
+    targs.timer_fd = tfd;
 
     pthread_t worker, plot_thread;
     int ret = pthread_create(&worker, NULL, &worker_signal_gen, &targs);
@@ -92,6 +120,7 @@ int main() {
     pthread_join(plot_thread, NULL);
 
     /* Clean up */
+    close(tfd);
     gpiod_chip_close(gpio->chip);
     free(gpio);
 
