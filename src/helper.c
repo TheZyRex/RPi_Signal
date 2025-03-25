@@ -237,11 +237,13 @@ void plot_to_gnuplot(measurement_t* m, size_t num, FILE* gp) {
 
         /* Compute jitter values and determine max and avg in one loop */
         int64_t max_abs = 0;
+        int64_t min_abs = 0;
         int64_t sum_abs = 0;
         for (size_t i = 0; i < count; i++) {
             int64_t abs_val = (jitters[i] < 0) ? -jitters[i] : jitters[i];
             if (abs_val > max_abs)
                 max_abs = abs_val;
+
             sum_abs += abs_val;
         }
         int64_t avg_abs = (count > 0) ? (sum_abs / count) : 0;
@@ -262,8 +264,9 @@ void plot_to_gnuplot(measurement_t* m, size_t num, FILE* gp) {
         /* Add dynamic Labels for MAX and AVG Jitter  */
         fprintf(gp, "unset label 2\n");
         fprintf(gp, "unset label 3\n");
+        fprintf(gp, "unset label 4\n");
         fprintf(gp, "set label 2 'Max: %" PRId64 " ns' at screen 0.90, screen 0.55\n", max_abs);
-        fprintf(gp, "set label 3 'Avg: %" PRId64 " ns' at screen 0.90, screen 0.50\n", avg_abs);
+        fprintf(gp, "set label 4 'Avg: %" PRId64 " ns' at screen 0.90, screen 0.45\n", avg_abs);
 
         /* Plot jitter data with reference */
         fprintf(gp, "plot '-' using 1:2 with linespoints pt 1 title 'Jitter (ns)', '-' using 1:2 with lines title 'Erwartet (0 ns)'\n");
