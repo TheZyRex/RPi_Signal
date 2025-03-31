@@ -28,36 +28,47 @@ void* func_signal_gen(void* args) {
     /* calculate clock_gettime overhead */
     uint64_t err = get_clock_gettime_overhead();
 
-    int current_state = 0;
+    uint8_t current_state = 0;
+    uint64_t expire;
     struct timespec start, now;
+
+    /* configure one-shot timer */
+    struct itimerspec timerSpec;
+    timerSpec.it_interval.tv_sec = 0;
+    timerSpec.it_interval.tv_nsec = 0;
+    timerSpec.it_value.tv_sec = 0;
+    timerSpec.it_value.tv_nsec = param->period_ns;
+
+    /* Start one-shot timer and begin time measurement */
+    timerfd_settime(param->timer_fd, 0, &timerSpec, NULL);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     /* Until user stops main program */
     while (!param->killswitch) {
 
-        /* get current timestamp */
+        /* read will block until timer has triggered */
+        read(param->timer_fd, &expire, sizeof(expire));
+
+        /* get timestamp after tigger */
         clock_gettime(CLOCK_MONOTONIC_RAW, &now);
+
+        /* Toggle GPIO pin */
+        current_state = !current_state;
+        gpiod_line_set_value(param->gpio->line, current_state);
+
+        /* Reset timer after toggle */
+        timerfd_settime(param->timer_fd, 0, &timerSpec, NULL);
 
         /* calculate time difference, corrected by clock_gettime overhead */
         uint64_t diff = timespec_delta_nanoseconds(&now, &start) - err;
+        start = now;
 
-        /* Check if a period has passed */
-        if (diff >= param->period_ns) {
+        /* Write time difference to ring buffer */
+        ring_buffer_queue_arr(param->rbuffer, (char*)&diff, sizeof(uint64_t));
 
-            /* toogle GPIO pin */
-            current_state = !current_state;
-            gpiod_line_set_value(param->gpio->line, current_state);
-
-            /* set start timestamp to current timestamp */
-            start = now;
-
-            /* Write time difference to ring buffer */
-            ring_buffer_queue_arr(param->rbuffer, (char*)&diff, sizeof(uint64_t));
-        }
     }
     pthread_exit(NULL);
 }
-
 
 /**
  * @brief Main. 
@@ -72,8 +83,6 @@ int main(int argc, char** argv) {
         targs.gpio = init_gpio(GPIO_PIN, GPIO_CHIP);
     }
 
-<<<<<<< Updated upstream
-=======
     int tfd = timerfd_create(CLOCK_MONOTONIC, 0);
     if (tfd < 0) {
         fprintf(stderr, "Error creating timerfd\n");
@@ -82,7 +91,6 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
->>>>>>> Stashed changes
     /* Initialize ring buffer storing measurement results */
     size_t buffer_size = RING_BUFFER_SIZE * sizeof(measurement_t);
     char buffer[buffer_size];
@@ -92,6 +100,7 @@ int main(int argc, char** argv) {
     /* configure thread arguments */
     targs.rbuffer = &ring_buffer;
     targs.killswitch = 0;
+    targs.timer_fd = tfd;
 
     /* Create and start worker threads */
     pthread_t worker_signal_gen, worker_data_handler;
