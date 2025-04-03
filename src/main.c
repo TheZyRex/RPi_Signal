@@ -45,7 +45,7 @@ void* func_signal_gen(void* args) {
     while (!param->killswitch) {
         /* */
         start.tv_nsec += param->period_ns;
-        if (start.tv_nsec >= 1e9) {
+        while (start.tv_nsec >= 1e9) {
             start.tv_sec++;
             start.tv_nsec -= 1e9;
         }
