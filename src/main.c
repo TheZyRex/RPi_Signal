@@ -33,21 +33,28 @@ void* func_signal_gen(void* args) {
     struct timespec start, now;
 
     /* configure one-shot timer */
-    struct itimerspec timerSpec;
-    timerSpec.it_interval.tv_sec = 0;
-    timerSpec.it_interval.tv_nsec = 0;
-    timerSpec.it_value.tv_sec = 0;
-    timerSpec.it_value.tv_nsec = param->period_ns;
+    struct timespec ts;
+    ts.tv_sec = 0;
+    ts.tv_nsec = param->period_ns;
 
     /* Start one-shot timer and begin time measurement */
-    timerfd_settime(param->timer_fd, 0, &timerSpec, NULL);
+    //timerfd_settime(param->timer_fd, 0, &timerSpec, NULL);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     /* Until user stops main program */
     while (!param->killswitch) {
+        /* */
+        start.tv_nsec += param->period_ns;
+        if (start.tv_nsec >= 1e9) {
+            start.tv_sec++;
+            start.tv_nsec -= 1e9;
+        }
 
-        /* read will block until timer has triggered */
-        read(param->timer_fd, &expire, sizeof(expire));
+        /* sleep for absolut amount of time */
+        clock_nanosleep(CLOCK_MONOTONIC_RAW, TIMER_ABSTIME, &start, NULL);
+
+        /* sleep for relative amount of time */
+        //clock_nanosleep(CLOCK_MONOTONIC_RAW, 0, &ts, NULL);
 
         /* get timestamp after tigger */
         clock_gettime(CLOCK_MONOTONIC_RAW, &now);
@@ -55,9 +62,6 @@ void* func_signal_gen(void* args) {
         /* Toggle GPIO pin */
         current_state = !current_state;
         gpiod_line_set_value(param->gpio->line, current_state);
-
-        /* Reset timer after toggle */
-        timerfd_settime(param->timer_fd, 0, &timerSpec, NULL);
 
         /* calculate time difference, corrected by clock_gettime overhead */
         uint64_t diff = timespec_delta_nanoseconds(&now, &start) - err;
