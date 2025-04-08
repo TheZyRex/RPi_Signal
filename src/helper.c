@@ -261,7 +261,7 @@ void plot_to_gnuplot(measurement_t* m, size_t num, FILE* gp, uint64_t period_ns)
 
         for (size_t i = start_index; i < num; i++) {
             int64_t diff = (int64_t)m[i].diff;
-            int64_t jitter = diff - (int64_t)period_ns;
+            int64_t jitter = abs(diff - (int64_t)period_ns);
             jitters[i - start_index] = jitter;
         }
 
@@ -296,7 +296,7 @@ void plot_to_gnuplot(measurement_t* m, size_t num, FILE* gp, uint64_t period_ns)
         fprintf(gp, "set label 3 'Avg: %" PRId64 " ns' at screen 0.90, screen 0.50\n", avg_abs);
 
         /* Plot jitter data with reference */
-        fprintf(gp, "plot '-' using 1:2 with linespoints pt 1 title 'Jitter (ns)', '-' using 1:2 with lines title 'Erwartet (0 ns)'\n");
+        fprintf(gp, "plot '-' using 1:2 with linespoints pt 1 title 'Abs. Jitter (ns)', '-' using 1:2 with lines title 'Erwartet (0 ns)'\n");
         for (size_t i = start_index; i < num; i++) {
             uint64_t sample = m[i].sampleCount;
             fprintf(gp, "%" PRIu64 " %" PRId64 "\n", sample, jitters[i - start_index]);

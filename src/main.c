@@ -30,31 +30,28 @@ void* func_signal_gen(void* args) {
 
     uint8_t current_state = 0;
     uint64_t expire;
-    struct timespec start, now;
+    struct timespec start, now, target;
+    //target.tv_sec = 0;
+    //target.tv_nsec = param->period_ns;
 
-    /* configure one-shot timer */
-    struct timespec ts;
-    ts.tv_sec = 0;
-    ts.tv_nsec = param->period_ns;
-
-    /* Start one-shot timer and begin time measurement */
-    //timerfd_settime(param->timer_fd, 0, &timerSpec, NULL);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    target = start;
+
 
     /* Until user stops main program */
     while (!param->killswitch) {
-        /* */
-        start.tv_nsec += param->period_ns;
-        while (start.tv_nsec >= 1e9) {
-            start.tv_sec++;
-            start.tv_nsec -= 1e9;
+        /* configure absolut sleep time */
+        target.tv_nsec += param->period_ns;
+        while (target.tv_nsec >= 1e9) {
+            target.tv_sec++;
+            target.tv_nsec -= 1e9;
         }
 
-        /* sleep for absolut amount of time */
-        clock_nanosleep(CLOCK_MONOTONIC_RAW, TIMER_ABSTIME, &start, NULL);
+        /* sleep for until specified time */
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &target, NULL);
 
-        /* sleep for relative amount of time */
-        //clock_nanosleep(CLOCK_MONOTONIC_RAW, 0, &ts, NULL);
+        /* sleep for fixed amount of time */
+        //clock_nanosleep(CLOCK_MONOTONIC, 0, &target, NULL);
 
         /* get timestamp after tigger */
         clock_gettime(CLOCK_MONOTONIC_RAW, &now);
@@ -65,11 +62,12 @@ void* func_signal_gen(void* args) {
 
         /* calculate time difference, corrected by clock_gettime overhead */
         uint64_t diff = timespec_delta_nanoseconds(&now, &start) - err;
-        start = now;
 
         /* Write time difference to ring buffer */
         ring_buffer_queue_arr(param->rbuffer, (char*)&diff, sizeof(uint64_t));
 
+        /* Reset start time */
+        start = now;
     }
     pthread_exit(NULL);
 }
