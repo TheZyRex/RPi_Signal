@@ -56,3 +56,28 @@ This command will provide an output similar to this:
 
 # Possible causes of high litter
 - System Interrupts and Kernel Tasks (see '/proc/interrupts')
+
+```bash
+stress-ng -c 1 --switch 8 --sched fifo --sched-prio 99 --timeout 30s --metrics-brief
+```
+
+Note regarding "RT throttling activated" kernel message. Linux protects against CPU starvation caused by real-time tasks that don't yield. The kernel enforces limits via
+
+```bash
+/proc/sys/kernel/sched_rt_runtime_us
+/proc/sys/kernel/sched_rt_period_us
+```
+
+This can be disabled by (Risky!):
+
+```bash
+sudo sysctl -w kernel.sched_rt_runtime_us=-1
+```
+
+or set to some custom value for experimenting:
+
+```bash
+sudo sysctl -w kernel.sched_rt_runtime_us=5000
+```
+
+This means that in every 1.000.000us (1 Second) period, you get 5000us of real-time task execution. (Period time set in /proc/sys/kernel/sched_rt_period_us)
