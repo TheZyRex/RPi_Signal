@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
 RUN locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8
 
-COPY poky-glibc-x86_64-core-image-minimal-cortexa76-raspberrypi5-toolchain-4.0.25.sh /tmp/sdk.sh
+COPY sdk.sh /tmp/sdk.sh
 RUN chmod +x /tmp/sdk.sh && \
     /tmp/sdk.sh -d /opt/poky-sdk && \
     find /opt/poky-sdk -name "environment-setup-aarch64-poky-linux"
